@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Para Jandalis ♥</title>
+<style>
+  :root { --rose:#111; --glow:#444; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; background:#e2dad7; font-family:Georgia,'Times New Roman',serif; color:#111; touch-action:none; user-select:none; -webkit-user-select:none; }
+  body { background:radial-gradient(ellipse at 50% 35%, #f6f1ef 0%, #e2dad7 55%, #c9bfbb 100%); }
+  canvas { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  #bg { z-index:0; }
+  #heart { z-index:1; cursor:grab; }
+  #heart:active { cursor:grabbing; }
+
+  #title { position:fixed; left:0; right:0; bottom:9vh; z-index:2; text-align:center; pointer-events:none; opacity:0; transition:opacity 2s; padding:0 22px; }
+  #title.show { opacity:1; }
+  #title h1 { font-size:clamp(40px,12vw,76px); font-weight:400; font-style:italic; letter-spacing:2px;
+    background:linear-gradient(90deg,#0b0b0b,#4a4a4a,#0b0b0b); background-size:200% auto; -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:shine 4s linear infinite; filter:drop-shadow(0 2px 10px rgba(0,0,0,.25)); }
+  #title p { margin-top:6px; font-size:clamp(13px,3.6vw,17px); letter-spacing:4px; text-transform:uppercase; color:#4a4a4a; opacity:.85; }
+  @keyframes shine { to { background-position:200% center; } }
+
+  #hint { position:fixed; top:5vh; left:0; right:0; z-index:2; text-align:center; font-size:14px; color:#4a4a4a; opacity:0; transition:opacity 1.5s; pointer-events:none; letter-spacing:1px; }
+  #hint.show { opacity:.8; }
+
+  #intro { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    background:radial-gradient(ellipse at center,#f6f1ef 0%,#c9bfbb 90%); transition:opacity 1.6s ease, visibility 1.6s; cursor:pointer; padding:24px; }
+  #intro.hide { opacity:0; visibility:hidden; }
+  #intro .mini { font-size:72px; color:var(--rose); animation:beat 1.2s ease-in-out infinite; filter:drop-shadow(0 0 22px var(--rose)); }
+  #intro h2 { margin-top:22px; font-size:clamp(26px,8vw,40px); font-weight:400; font-style:italic; color:#1a1a1a; }
+  #intro span { margin-top:18px; font-size:15px; letter-spacing:3px; text-transform:uppercase; color:#555; animation:blink 1.8s ease-in-out infinite; }
+  @keyframes beat { 0%,100%{transform:scale(1)} 15%{transform:scale(1.2)} 30%{transform:scale(1)} 45%{transform:scale(1.14)} }
+  @keyframes blink { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+  #poem { margin:12px auto 0; max-width:30em; font-style:italic; font-size:clamp(15px,4.2vw,19px); line-height:1.65; color:#222; text-transform:none; letter-spacing:.3px; opacity:.95; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<canvas id="heart"></canvas>
+
+<div id="hint">Arrastra el corazón con el dedo ♥</div>
+<div id="title"><h1>Jandalis</h1><p id="poem"></p></div>
+
+<div id="intro">
+  <div class="mini">♥</div>
+  <h2>Hay algo especial para ti…</h2>
+  <span>Toca para abrir</span>
+</div>
+
+<script>
+const NAME = 'Jandalis';
+/* ============================ */
+
+const bg = document.getElementById('bg'), hc = document.getElementById('heart');
+const bx = bg.getContext('2d'), hx = hc.getContext('2d');
+let W, H, DPR, cx, cy, S;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  [bg, hc].forEach(c => { c.width = W * DPR; c.height = H * DPR; });
+  bx.setTransform(DPR,0,0,DPR,0,0); hx.setTransform(DPR,0,0,DPR,0,0);
+  cx = W / 2; cy = H * 0.31; S = Math.min(W, H * 0.5) / 40;
+}
+addEventListener('resize', resize); resize();
+
+/* ---------- Corazón 3D de partículas ---------- */
+const N = 2600, pts = [];
+for (let i = 0; i < N; i++) {
+  const t = Math.random() * Math.PI * 2;
+  const x = 16 * Math.pow(Math.sin(t), 3);
+  const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+  const u = Math.pow(Math.random(), 0.35);           // más densidad hacia la superficie
+  const z = (Math.random() < .5 ? -1 : 1) * Math.sqrt(Math.max(0, 1 - u*u)) * 9;
+  pts.push({ x: x*u, y: y*u, z, ph: Math.random()*6.28, sz: Math.random()*1.4 + .5, h: Math.random() });
+}
+// Anillo de destellos orbitando
+const orbit = [];
+for (let i = 0; i < 90; i++) orbit.push({ a: Math.random()*6.28, r: 24 + Math.random()*10, y: (Math.random()-.5)*30, sp: .004 + Math.random()*.006, sz: Math.random()*2+.8 });
+
+let rotY = 0, rotX = -0.1, velY = 0.006, velX = 0, dragging = false, lx = 0, ly = 0;
+let offX = 0, offY = 0, tOffX = 0, tOffY = 0;  // el corazón sigue al dedo un poquito
+let started = false, born = 0;
+
+hc.addEventListener('pointerdown', e => { dragging = true; lx = e.clientX; ly = e.clientY; hc.setPointerCapture(e.pointerId); });
+addEventListener('pointermove', e => {
+  if (dragging) {
+    velY = (e.clientX - lx) * 0.008; velX = (e.clientY - ly) * 0.008;
+    rotY += velY; rotX += velX; lx = e.clientX; ly = e.clientY;
+    tOffX = (e.clientX - cx) * 0.12; tOffY = (e.clientY - cy) * 0.12;
+  }
+});
+function release() { dragging = false; tOffX = tOffY = 0; }
+addEventListener('pointerup', release); addEventListener('pointercancel', release);
+// toque rápido = latido + corazoncitos
+hc.addEventListener('click', e => { pulse = 1; for (let i=0;i<8;i++) spawn(e.clientX, e.clientY); });
+// Inclinar el teléfono mueve el corazón
+addEventListener('deviceorientation', e => {
+  if (!dragging && e.gamma != null) { tOffX = Math.max(-30, Math.min(30, e.gamma)) * 1.2; tOffY = Math.max(-20, Math.min(20, (e.beta-45))) * .8; }
+});
+
+let pulse = 0;
+function drawHeart(time) {
+  hx.clearRect(0, 0, W, H);
+  hx.globalCompositeOperation = 'source-over';
+  const beatPhase = (time % 1300) / 1300;
+  const beat = 1 + 0.09 * (Math.exp(-Math.pow((beatPhase-.08)*9,2)) + .7*Math.exp(-Math.pow((beatPhase-.28)*9,2))) + pulse * .15;
+  pulse *= 0.92;
+  const grow = Math.min(1, (time - born) / 2500); const ease = 1 - Math.pow(1 - grow, 3);
+
+  if (!dragging) { velY += (0.006 - velY) * 0.02; velX *= 0.95; rotY += velY; rotX += velX; rotX += (-0.1 - rotX) * 0.01; }
+  offX += (tOffX - offX) * .08; offY += (tOffY - offY) * .08;
+
+  const cY = Math.cos(rotY), sY = Math.sin(rotY), cX = Math.cos(rotX), sX = Math.sin(rotX);
+  const px = cx + offX, py = cy + offY;
+  const proj = [];
+  for (const p of pts) {
+    let x = p.x * beat * ease, y = p.y * beat * ease, z = p.z * beat * ease;
+    let x1 = x*cY + z*sY, z1 = -x*sY + z*cY;
+    let y1 = y*cX - z1*sX, z2 = y*sX + z1*cX;
+    const persp = 60 / (60 + z2);
+    proj.push([px + x1*S*persp, py + y1*S*persp, z2, p, persp]);
+  }
+  proj.sort((a,b) => b[2]-a[2]);
+  for (const [X, Y, Z, p, persp] of proj) {
+    const depth = (1 - (Z + 12) / 24);                // 0 lejos – 1 cerca
+    const tw = .6 + .4 * Math.sin(time*.003 + p.ph);
+    const l = 48 + depth*20 + p.h*10;
+    hx.fillStyle = `hsla(0, 0%, ${3+(1-depth)*16+p.h*4}%, ${(.3 + depth*.65) * tw})`;
+    const r = p.sz * persp * (1 + depth) * (S/9);
+    hx.beginPath(); hx.arc(X, Y, r, 0, 6.283); hx.fill();
+  }
+  // brillo central
+  const g = hx.createRadialGradient(px, py, 0, px, py, S*22*beat);
+  g.addColorStop(0, 'rgba(0,0,0,.14)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  hx.fillStyle = g; hx.fillRect(0, 0, W, H);
+
+  // destellos orbitando
+  for (const o of orbit) {
+    o.a += o.sp;
+    const x = Math.cos(o.a) * o.r, z = Math.sin(o.a) * o.r;
+    const x1 = x*cY + z*sY*0, scr = px + x * S * (1 + Math.sin(o.a)*.2) * ease, sy = py + (o.y + Math.sin(time*.001 + o.a*3)*2) * S * ease;
+    hx.fillStyle = `rgba(40,40,40,${.3 + .5*Math.abs(Math.sin(time*.004+o.a*5))})`;
+    hx.beginPath(); hx.arc(scr, sy, o.sz, 0, 6.283); hx.fill();
+  }
+  hx.globalCompositeOperation = 'source-over';
+}
+
+/* ---------- Fondo: corazoncitos y estrellas flotando ---------- */
+const floaters = [], stars = [];
+for (let i = 0; i < 70; i++) stars.push({ x: Math.random(), y: Math.random(), r: Math.random()*1.4+.3, ph: Math.random()*6.28 });
+function spawn(x, y) {
+  floaters.push({ x: x ?? Math.random()*W, y: y ?? H + 20, s: 8 + Math.random()*18, vy: .4 + Math.random()*1.1,
+    sw: Math.random()*6.28, a: .15 + Math.random()*.45, c: Math.random() < .5 ? '#222' : '#6b6b6b', vx: (Math.random()-.5)*(y == null ? 0 : 3) });
+}
+function heartPath(c, x, y, s) {
+  c.beginPath(); c.moveTo(x, y + s*.3);
+  c.bezierCurveTo(x, y - s*.1, x - s*.55, y - s*.1, x - s*.55, y + s*.3);
+  c.bezierCurveTo(x - s*.55, y + s*.65, x, y + s*.85, x, y + s*1.05);
+  c.bezierCurveTo(x, y + s*.85, x + s*.55, y + s*.65, x + s*.55, y + s*.3);
+  c.bezierCurveTo(x + s*.55, y - s*.1, x, y - s*.1, x, y + s*.3); c.closePath();
+}
+function drawBg(time) {
+  bx.clearRect(0, 0, W, H);
+  for (const s of stars) { bx.fillStyle = `rgba(60,60,60,${.1 + .5*Math.abs(Math.sin(time*.001 + s.ph))})`; bx.beginPath(); bx.arc(s.x*W, s.y*H, s.r, 0, 6.283); bx.fill(); }
+  if (started && Math.random() < .08) spawn();
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i]; f.y -= f.vy; f.sw += .03; f.x += Math.sin(f.sw)*.5 + f.vx; f.vx *= .97; f.a -= .0006;
+    if (f.y < -30 || f.a <= 0) { floaters.splice(i, 1); continue; }
+    bx.globalAlpha = f.a; bx.fillStyle = f.c; bx.shadowColor = f.c; bx.shadowBlur = 12;
+    heartPath(bx, f.x, f.y, f.s); bx.fill();
+  }
+  bx.globalAlpha = 1; bx.shadowBlur = 0;
+}
+
+function loop(t) { drawBg(t); if (started) drawHeart(t); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+/* ---------- Poemas: uno distinto cada vez que se abre ---------- */
+const POEMAS = [
+ "Si el tiempo me dejara escoger,<br>volvería a elegirte en cada mañana.<br>Jandalis, tu nombre es mi razón<br>para sonreír sin que me pregunten por qué.",
+ "Hay corazones que laten por costumbre<br>y otros que laten por alguien.<br>El mío aprendió tu nombre,<br>y ya no sabe latir sin ti.",
+ "No hacen falta mil palabras,<br>me basta tu risa para entender<br>que el mundo, cuando estás cerca,<br>es un lugar mucho más bonito.",
+ "Si yo fuera luna, Jandalis,<br>te cuidaría cada noche.<br>Si fuera sol, te daría la mañana.<br>Siendo yo, te doy mi corazón.",
+ "Contigo aprendí que el amor<br>no hace ruido, solo se queda:<br>en una mirada, en un abrazo,<br>en la calma de saber que estás.",
+ "Que nada te falte, Jandalis:<br>ni un abrazo cuando el día pese,<br>ni alguien que te recuerde<br>lo mucho que vales y lo que brillas.",
+ "Eres mi casualidad favorita,<br>mi pensamiento al despertar,<br>mi canción que no se acaba<br>y mi lugar donde quiero estar."
+];
+function nextPoem() {
+  let i = Math.floor(Math.random() * POEMAS.length);
+  try {
+    const last = parseInt(localStorage.getItem('jandalisPoema'), 10);
+    if (POEMAS.length > 1 && i === last) i = (i + 1) % POEMAS.length;
+    localStorage.setItem('jandalisPoema', String(i));
+  } catch (e) {}
+  return POEMAS[i];
+}
+
+/* ---------- Abrir ---------- */
+const intro = document.getElementById('intro');
+intro.addEventListener('click', () => {
+  document.getElementById('poem').innerHTML = nextPoem();
+  intro.classList.add('hide');
+  started = true; born = performance.now();
+  for (let i = 0; i < 25; i++) setTimeout(() => spawn(), i * 80);
+  setTimeout(() => document.getElementById('title').classList.add('show'), 900);
+  setTimeout(() => { const h = document.getElementById('hint'); h.classList.add('show'); setTimeout(() => h.classList.remove('show'), 5000); }, 3000);
+  if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) { try { DeviceOrientationEvent.requestPermission(); } catch(e){} }
+});
+</script>
+</body>
+</html>
